@@ -12,13 +12,30 @@ from scipy import stats
 class Interface(Result):
     def __init__(self):
         super().__init__()
+        self.module_handle = 'INTERFACE'
+
         self.wci_bounds = np.zeros((3, 2))
         self.num_grid = None
         self.bandwidth = 2.4
         self.values = None
         self.xyz = {'x': 0, 'y': 1, 'z': 2}
         self.interface = None
-        self.func_dict = {}
+
+        self.d_interface = 0.016
+        self.interval = 0.5
+        self._mode = 'complete'
+        self.mode_supported = ['complete', 'fast']
+
+    @property
+    def mode(self):
+        return self._mode
+
+    @mode.setter
+    def mode(self, string):
+        if string in self.mode_supported:
+            self.mode = string
+        else:
+            raise Exception('[{}] Unrecognized calculation mode \'{}\'. Aborting.' .format(self.module_handle, string))
 
     def read_input(self):
         super().read_input()
@@ -33,6 +50,12 @@ class Interface(Result):
                             self.wci_bounds[1] = np.array(list(map(float, line[1:3])))
                         elif line[0] == 'WCI_Z':
                             self.wci_bounds[2] = np.array(list(map(float, line[1:3])))
+                        elif line[0] == 'INTERFACE_DENSITY':
+                            self.d_interface = float(line[1])
+                        elif line[0] == 'MESH_INTERVAL':
+                            self.interval = float(line[1])
+                        elif line[0] == 'MODE':
+                            self.mode = line[1]
                     except IndexError:
                         raise Exception('No value found after tag \'{}\' in input file.'.format(line[0]))
 
@@ -45,33 +68,30 @@ class Interface(Result):
         energy = np.sum(tdiff * tdiff, axis=1) / 2.
         return np.sum(np.exp(-energy)) / (2 * np.pi * self.bandwidth**2)
 
-    def willard_chandler_interface(self, d_interface=0.016, interval=0.5, mode='complete'):
+    def willard_chandler_interface(self):
         self.wci_bounds = np.where(self.wci_bounds.astype(bool), self.wci_bounds, self.bounds)
-        self.num_grid = (np.array(list(map(lambda _: _[1]-_[0], self.wci_bounds))) / interval).astype(int)
+        self.num_grid = (np.array(list(map(lambda _: _[1]-_[0], self.wci_bounds))) / self.interval).astype(int)
         x, y, z = np.mgrid[self.wci_bounds[0][0]:self.wci_bounds[0][1]:self.num_grid[0]*1j,
                            self.wci_bounds[1][0]:self.wci_bounds[1][1]:self.num_grid[1]*1j,
                            self.wci_bounds[2][0]:self.wci_bounds[2][1]:self.num_grid[2]*1j]
         mesh_grid = np.vstack([x.ravel(), y.ravel(), z.ravel()]).T
 
         self.values = self.atoms_find()
-        density_grid = np.abs(np.array(list(map(self.gaussian_kde, mesh_grid))) - d_interface).reshape(self.num_grid)
+        density_grid = np.abs(np.array(list(map(self.gaussian_kde, mesh_grid))) - self.d_interface).reshape(self.num_grid)
         mesh_grid = mesh_grid.reshape(np.append(self.num_grid, 3))
 
-        if mode == 'fast':
+        if self.mode == 'fast':
             self.interface = mesh_grid[np.where(density_grid < 0.002)].T
-        if mode == 'complete':
+        elif self.mode == 'complete':
             index = np.argmin(density_grid, axis=2)
             xs, ys = np.mgrid[0:self.num_grid[0], 0:self.num_grid[1]]
             self.interface = mesh_grid[xs, ys, index].reshape((self.num_grid[0]*self.num_grid[1], 3)).T
 
     def worker(self):
-        while True:
-            checksum = self.checked_read()
-            if checksum == 1:
-                continue
-            elif checksum == -1:
-                break
-            self.tell_process()
+        self.analysis_worker_template(self.willard_chandler_interface, self.none_func, self.save_wci)
+
+    def save_wci(self):
+        pass
 
     def plot(self, mode='complete'):
         fig = plt.figure()
