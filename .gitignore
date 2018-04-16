@@ -1,0 +1,9 @@
+.idea
+.DS_Store
+__pycache__/
+dist/
+test/
+*.pyc
+*.egg-info
+config_path
+toolkit.config
