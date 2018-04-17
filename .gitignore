@@ -7,3 +7,4 @@ test/
 *.egg-info
 config_path
 toolkit.config
+*~
