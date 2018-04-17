@@ -109,16 +109,10 @@ class Interface(Result):
         self.dist_results.extend(min_dists)
 
     def wci_worker(self):
-        self.analysis_template(inner_compute_func=self.wci,
-                inner_save_func=self.save_wci,
-                outer_compute_func=self.void_func,
-                outer_save_fucn=self.slef.void_func)
+        self.analysis_template(self.wci, self.void_func, self.save_wci)
 
     def wci_pmf_worker(self):
-        self.analysis_template(inner_compute_func=self.wci_pmf,
-                inner_save_func=self.void_func,
-                outer_compute_func=self.void_func,
-                outer_save_func=self.save_wci_pmf)
+        self.analysis_template(self.wci_pmf, self.void_func(), self.save_wci_pmf)
 
     def save_wci(self):  # TODO
         with open('{}{}.wci'.format(self.save_dir, self.save_tag), 'a') as save_file:

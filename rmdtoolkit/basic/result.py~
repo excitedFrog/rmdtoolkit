@@ -226,7 +226,7 @@ class Result(object):
     def void_func(self):
         pass
 
-    def analysis_template(self, inner_compute_func, inner_save_func, outer_compute_func, outer_save_func, tell_process=True, parse=True):
+    def analysis_template(self, inloop_func, outloop_func, save_func, tell_process=True, parse=True):
         self.read_input()
         self.find_file()
         self.open_file()
@@ -238,10 +238,9 @@ class Result(object):
                 break
             if tell_process:
                 self.tell_process()
-            inner_compute_func()
-            inner_save_func()
-        outer_compute__func()
-        outer_save_func()
+            inloop_func()
+            save_func()
+        outloop_func()
 
     # =================================================================================================================
     # || InfoGet Methods ||
