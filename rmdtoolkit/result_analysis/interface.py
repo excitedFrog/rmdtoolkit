@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 from rmdtoolkit.basic.result import Result
-from rmdtoolkit.basic.tool import pbc_dist
-from scipy import stats
 
 
 class Interface(Result):
@@ -17,14 +15,18 @@ class Interface(Result):
         self.wci_bounds = np.zeros((3, 2))
         self.num_grid = None
         self.bandwidth = 2.4
-        self.values = None
+        self.den_values = None
         self.xyz = {'x': 0, 'y': 1, 'z': 2}
         self.interface = None
 
         self.d_interface = 0.016
         self.interval = 0.5
         self._mode = 'complete'
-        self.mode_supported = ['complete', 'fast']
+        self.supported_modes = ['complete', 'fast']
+
+        self.den_atoms = list()  # Density of which is used to determine the interface
+        self.pmf_atoms = list()  # PMF atom
+        self.dist_results = list()
 
     @property
     def mode(self):
@@ -32,8 +34,8 @@ class Interface(Result):
 
     @mode.setter
     def mode(self, string):
-        if string in self.mode_supported:
-            self.mode = string
+        if string in self.supported_modes:
+            self._mode = string
         else:
             raise Exception('[{}] Unrecognized calculation mode \'{}\'. Aborting.' .format(self.module_handle, string))
 
@@ -56,11 +58,15 @@ class Interface(Result):
                             self.interval = float(line[1])
                         elif line[0] == 'MODE':
                             self.mode = line[1]
+                        elif line[0] == 'DEN_ATOM':
+                            self.den_atoms.append(line[1:])
+                        elif line[0] == 'PMF_ATOM':
+                            self.pmf_atoms.append(line[1:])
                     except IndexError:
                         raise Exception('No value found after tag \'{}\' in input file.'.format(line[0]))
 
     def gaussian_kde(self, origin):
-        diff = np.abs(self.values - origin)  # if no pbc
+        diff = np.abs(self.den_values - origin)  # if no pbc
         pdiff = self.box_len - diff  # if all pbc
         mask = diff < self.box_len/2  # find which element need pbc
         diff = np.where(mask, diff, pdiff)  # mask'em
@@ -68,7 +74,7 @@ class Interface(Result):
         energy = np.sum(tdiff * tdiff, axis=1) / 2.
         return np.sum(np.exp(-energy)) / (2 * np.pi * self.bandwidth**2)
 
-    def willard_chandler_interface(self):
+    def wci(self):  # Willard-Chandler Interface
         self.wci_bounds = np.where(self.wci_bounds.astype(bool), self.wci_bounds, self.bounds)
         self.num_grid = (np.array(list(map(lambda _: _[1]-_[0], self.wci_bounds))) / self.interval).astype(int)
         x, y, z = np.mgrid[self.wci_bounds[0][0]:self.wci_bounds[0][1]:self.num_grid[0]*1j,
@@ -76,8 +82,9 @@ class Interface(Result):
                            self.wci_bounds[2][0]:self.wci_bounds[2][1]:self.num_grid[2]*1j]
         mesh_grid = np.vstack([x.ravel(), y.ravel(), z.ravel()]).T
 
-        self.values = self.atoms_find()
-        density_grid = np.abs(np.array(list(map(self.gaussian_kde, mesh_grid))) - self.d_interface).reshape(self.num_grid)
+        self.den_values = self.atoms_find(self.den_atoms)
+        density_grid = np.abs(np.array(list(map(self.gaussian_kde, mesh_grid))) - self.d_interface)\
+            .reshape(self.num_grid)
         mesh_grid = mesh_grid.reshape(np.append(self.num_grid, 3))
 
         if self.mode == 'fast':
@@ -85,15 +92,36 @@ class Interface(Result):
         elif self.mode == 'complete':
             index = np.argmin(density_grid, axis=2)
             xs, ys = np.mgrid[0:self.num_grid[0], 0:self.num_grid[1]]
-            self.interface = mesh_grid[xs, ys, index].reshape((self.num_grid[0]*self.num_grid[1], 3)).T
+            self.interface = mesh_grid[xs, ys, index].reshape((self.num_grid[0]*self.num_grid[1], 3))
 
-    def worker(self):
-        self.analysis_worker_template(self.willard_chandler_interface, self.none_func, self.save_wci)
+    def dist_to_interface(self, origin):
+        diff = np.abs(self.interface - origin)
+        pdiff = self.box_len - diff
+        mask = diff < self.box_len/2
+        diff = np.where(mask, diff, pdiff)
+        dist = np.min(np.linalg.norm(diff, axis=1))
+        return dist
 
-    def save_wci(self):
+    def wci_pmf(self):
+        self.wci()
+        origins = self.atoms_find(self.pmf_atoms)
+        min_dists = list(map(self.dist_to_interface, origins))
+        self.dist_results.extend(min_dists)
+
+    def wci_worker(self):
+        self.analysis_template(self.wci, self.void_func, self.save_wci)
+
+    def wci_pmf_worker(self):
+        self.analysis_template(self.wci_pmf, self.void_func(), self.save_wci_pmf)
+
+    def save_wci(self):  # TODO
+        pass
+
+    def save_wci_pmf(self):  # TODO
         pass
 
     def plot(self, mode='complete'):
+        self.interface = self.interface.T
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         if mode == 'fast':
@@ -110,6 +138,4 @@ class Interface(Result):
         ax.set_ylabel('Y coord')
         ax.set_zlabel('Z coord')
         plt.savefig('grid3d.jpg')
-
-
-
+        self.interface = self.interface.T

@@ -129,6 +129,18 @@ class Result(object):
                             self.tell_process_freq = int(line[1]) if int(line[1]) > 0 else 20
                         elif line[0] == 'STOP_FRAME':  # stop frame (unit is frame)
                             self.stop_frame = int(line[1])
+
+                        elif line[0] == 'SYS_NAME':
+                            self.sys_name = line[1]
+                        elif line[0] == 'TRJ_NAME':
+                            self.trj_basename = line[1]
+                        elif line[0] == 'EVB_NAME':
+                            self.evb_basename = line[1]
+                        elif line[0] == 'TRJ_EXTNAME':
+                            self.trj_extname = line[1]
+                        elif line[0] == 'EVB_EXTNAME':
+                            self.evb_extname = line[1]
+
                         elif line[0] == 'SPECIE':
                             self.specie_tags.append(line[1])
                             self.specie_numbers.append(int(line[2]))
@@ -168,7 +180,7 @@ class Result(object):
             if not os.path.isfile(self.trj_path):
                 raise Exception('File {} does not exist!'.format(self.trj_path))
         if evb_flag:
-            self.evb_path = '{}{}.{}'.format(self.work_dir, self.trj_basename, self.trj_extname)
+            self.evb_path = '{}{}.{}'.format(self.work_dir, self.evb_basename, self.evb_extname)
             if not os.path.isfile(self.trj_path):
                 raise Exception('File {} does not exist!'.format(self.evb_path))
 
@@ -205,17 +217,21 @@ class Result(object):
         if parse:
             self.parse_trj_info()
         self.frame_tot += 1
+        return 0
 
     def tell_process(self):
         if self.frame_tot % self.tell_process_freq == 0:
             print('[{}] {} READING FRAME {}'.format(self.module_handle, self.save_tag, self.trj_time))
 
-    def none_func(self):
+    def void_func(self):
         pass
 
-    def analysis_worker_template(self, inloop_func, outloop_func, save_func, tell_process=True):
+    def analysis_template(self, inloop_func, outloop_func, save_func, tell_process=True, parse=True):
+        self.read_input()
+        self.find_file()
+        self.open_file()
         while True:
-            checksum = self.checked_read()
+            checksum = self.checked_read(parse=parse)
             if checksum == 1:
                 continue
             elif checksum == -1:
@@ -384,6 +400,10 @@ class Result(object):
     def get_vel(df):
         return pd.DataFrame.as_matrix(df, columns=['vx', 'vy', 'vz'])
 
+    @staticmethod
+    def get_vel_df(df):
+        return pd.DataFrame(df, columns=['vx', 'vy', 'vz'])
+
     def get_mass(self, df):
         types = df.as_matrix(columns=['type'])
         return np.array([self.atom_mass[_[0]] for _ in types])
@@ -391,9 +411,9 @@ class Result(object):
     # =================================================================================================================
     # ||AtomFind Methods||
     # =================================================================================================================
-    def atoms_find(self, df=False):
+    def atoms_find(self, target_atoms, df=False):  # Target atoms is a list of list.
         temp = list()
-        for target_atom in self.target_atoms:
+        for target_atom in target_atoms:
             temp.append(self.atom_find(target_atom, df=df))
         if df:
             return pd.concat(temp)
@@ -405,26 +425,35 @@ class Result(object):
                      'DON': self.find_donor,
                      'CEC': self.find_cec}
         if target_atom[0] in func_dict:
-            return func_dict[target_atom[0]]()
+            return func_dict[target_atom[0]](df=df)
         else:
             mol_tag = target_atom[0]
             atom_ids = [int(i) for i in target_atom[1:-1]]
             return self.find_atom(mol_tag, atom_ids, df=df)
 
-    def find_com(self):
+    def find_com(self, df=False):
         info = self.trj_info_df[self.trj_info_df['id'].isin(self.com_range)] if self.com_range else self.trj_info_df
         masses = self.get_mass(info)
         positions = self.get_pos(info)
         com = np.dot(masses, positions) / np.sum(masses)
-        return np.array(com)
+        if df:
+            return pd.DataFrame(np.array([com]), columns=['x', 'y', 'z'])
+        else:
+            return np.array(com)
 
-    def find_donor(self):
+    def find_donor(self, df=False):
         info = self.trj_info_df[self.trj_info_df['mol'].isin(self.evb_info['ReactionCenters'][:, 1])
                                 & self.trj_info_df['type'].isin([self.wat_o_type, self.hyd_o_type])]
-        return self.get_pos(info)
+        if df:
+            return self.get_pos_df(info)
+        else:
+            return self.get_pos(info)
 
-    def find_cec(self):
-        return np.array(self.evb_info['CECS'])
+    def find_cec(self, df=False):
+        if df:
+            return pd.DataFrame(np.array(self.evb_info['CECS']), columns=['x', 'y', 'z'])
+        else:
+            return np.array(self.evb_info['CECS'])
 
     # find_atom takes type now, instead of atom_id
     def find_atom(self, mol_tag, atom_types, df=False):
