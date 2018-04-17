@@ -74,6 +74,14 @@ class Interface(Result):
         energy = np.sum(tdiff * tdiff, axis=1) / 2.
         return np.sum(np.exp(-energy)) / (2 * np.pi * self.bandwidth**2)
 
+    def dist_to_interface(self, origin):
+        diff = np.abs(self.interface - origin)
+        pdiff = self.box_len - diff
+        mask = diff < self.box_len/2
+        diff = np.where(mask, diff, pdiff)
+        dist = np.min(np.linalg.norm(diff, axis=1))
+        return dist
+
     def wci(self):  # Willard-Chandler Interface
         self.wci_bounds = np.where(self.wci_bounds.astype(bool), self.wci_bounds, self.bounds)
         self.num_grid = (np.array(list(map(lambda _: _[1]-_[0], self.wci_bounds))) / self.interval).astype(int)
@@ -94,13 +102,10 @@ class Interface(Result):
             xs, ys = np.mgrid[0:self.num_grid[0], 0:self.num_grid[1]]
             self.interface = mesh_grid[xs, ys, index].reshape((self.num_grid[0]*self.num_grid[1], 3))
 
-    def dist_to_interface(self, origin):
-        diff = np.abs(self.interface - origin)
-        pdiff = self.box_len - diff
-        mask = diff < self.box_len/2
-        diff = np.where(mask, diff, pdiff)
-        dist = np.min(np.linalg.norm(diff, axis=1))
-        return dist
+    def save_wci(self):  # TODO
+        with open('{}{}.wci'.format(self.save_dir, self.save_tag), 'a') as save_file:
+                save_file.write('# WCI at {}\n'.format(self.trj_time))
+                np.savetxt(save_file, self.interface, fmt='%.4f')
 
     def wci_pmf(self):
         self.wci()
@@ -108,37 +113,35 @@ class Interface(Result):
         min_dists = list(map(self.dist_to_interface, origins))
         self.dist_results.extend(min_dists)
 
+    # This does not calculate PMF directly, but logs the COLVAR(dist to interface) instead.
+    # The PMF shall be calculated with WHAM, as the is a series of biased trajectories.
+    def save_wci_pmf(self):
+        len_result = len(self.dist_results)
+        with open('{}{}.wci-pmf'.format(self.save_dir, self.save_tag), 'a') as save_file:
+            arr = np.concatenate((np.arange(len_result).reshape(len_result, 1),
+                                  np.array(self.dist_results).reshape(len_result, 1)),
+                                 axis=1)
+            np.savetxt(save_file, arr, fmt='%.4f')
+
     def wci_worker(self):
         self.analysis_template(inner_compute_func=self.wci,
-                inner_save_func=self.save_wci,
-                outer_compute_func=self.void_func,
-                outer_save_fucn=self.slef.void_func)
+                               inner_save_func=self.save_wci,
+                               outer_compute_func=self.void_func,
+                               outer_save_func=self.void_func)
 
     def wci_pmf_worker(self):
         self.analysis_template(inner_compute_func=self.wci_pmf,
-                inner_save_func=self.void_func,
-                outer_compute_func=self.void_func,
-                outer_save_func=self.save_wci_pmf)
+                               inner_save_func=self.void_func,
+                               outer_compute_func=self.void_func,
+                               outer_save_func=self.save_wci_pmf)
 
-    def save_wci(self):  # TODO
-        with open('{}{}.wci'.format(self.save_dir, self.save_tag), 'a') as save_file:
-                save_file.write('# WCI at {}\n'.format(self.trj_time))
-                save_file.write(str(self.interface).replace('[', '').replace(']', ''))
-                save_file.write('\n')
-    
-    # This does not calculate PMF directly, but logs the COLVAR(dist to interface)
-    # The PMF shall be calculated with WHAM, as the is a series of biased trajecories.
-    def save_wci_pmf(self):
-        with open('{}{}.wcipmf'.format(self.save_dir, self.save_tag), 'a') as save_file:
-            save_file.write('\n'.join([' '.join([str(self.trj_time), str(_)]) for _ in self.dist_list]))
-
-    def plot(self, mode='complete'):
+    def plot(self):
         self.interface = self.interface.T
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        if mode == 'fast':
+        if self._mode == 'fast':
             ax.scatter(self.interface[0], self.interface[1], self.interface[2])
-        if mode == 'complete':
+        if self._mode == 'complete':
             xs = self.interface[0].reshape((self.num_grid[0], self.num_grid[1])).T[0]
             ys = self.interface[1].reshape((self.num_grid[0], self.num_grid[1]))[0]
             xs, ys = np.meshgrid(xs, ys)

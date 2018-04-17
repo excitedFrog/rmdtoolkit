@@ -5,7 +5,7 @@ import multiprocessing as mp
 from rmdtoolkit.result_analysis.interface import Interface
 
 
-def analysis_worker(input_path):
+def analysis_worker(input_path, ):
     cls = Interface()
     cls.input_path = input_path
     cls.wci_worker()

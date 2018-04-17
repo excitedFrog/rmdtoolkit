@@ -201,6 +201,7 @@ class Result(object):
         if not self.is_first_frame and len(self.trj_info) != self.system_size:
             return -1
         if self.trj_time == 'EOF':
+            print('EOF')
             return -1
         if self.frame_tot > self.stop_frame:
             return -1
@@ -226,7 +227,8 @@ class Result(object):
     def void_func(self):
         pass
 
-    def analysis_template(self, inner_compute_func, inner_save_func, outer_compute_func, outer_save_func, tell_process=True, parse=True):
+    def analysis_template(self, inner_compute_func, inner_save_func, outer_compute_func, outer_save_func,
+                          tell_process=True, parse=True):
         self.read_input()
         self.find_file()
         self.open_file()
@@ -240,7 +242,7 @@ class Result(object):
                 self.tell_process()
             inner_compute_func()
             inner_save_func()
-        outer_compute__func()
+        outer_compute_func()
         outer_save_func()
 
     # =================================================================================================================
