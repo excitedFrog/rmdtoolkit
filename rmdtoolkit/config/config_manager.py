@@ -51,5 +51,5 @@ class ConfigManager(object):
     @staticmethod
     def get_config_path():
         with open(path.join(here, 'config_path'), 'r', encoding='utf-8') as config_path_file:
-            config_path = config_path_file.readline()
+            config_path = config_path_file.readline().strip('\n')
         return config_path

@@ -1,5 +1,7 @@
 # Python 3.6.1
 
+import matplotlib
+matplotlib.use('Agg')
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -129,6 +131,12 @@ class Interface(Result):
                                outer_compute_func=self.void_func,
                                outer_save_func=self.void_func)
 
+    def wci_plot_worker(self):
+        self.analysis_template(inner_compute_func=self.wci,
+                               inner_save_func=self.plot,
+                               outer_compute_func=self.void_func,
+                               outer_save_func=self.void_func)
+
     def wci_pmf_worker(self):
         self.analysis_template(inner_compute_func=self.wci_pmf,
                                inner_save_func=self.void_func,
@@ -136,6 +144,7 @@ class Interface(Result):
                                outer_save_func=self.save_wci_pmf)
 
     def plot(self):
+        print(self.frame_tot)
         self.interface = self.interface.T
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
@@ -152,5 +161,6 @@ class Interface(Result):
         ax.set_xlabel('X coord')
         ax.set_ylabel('Y coord')
         ax.set_zlabel('Z coord')
-        plt.savefig('grid3d.jpg')
+        plt.savefig('frame{}.jpg'.format(self.frame_tot))
+        plt.close()
         self.interface = self.interface.T
