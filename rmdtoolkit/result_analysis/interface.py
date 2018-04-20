@@ -2,6 +2,7 @@
 
 import matplotlib
 matplotlib.use('Agg')
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -84,6 +85,10 @@ class Interface(Result):
         dist = np.min(np.linalg.norm(diff, axis=1))
         return dist
 
+    def z_to_interface(self, origin):
+        return np.abs(
+            origin[2] - self.interface[np.argmin(np.linalg.norm(self.interface[:, 0:2] - origin[0:2], axis=1)), 2])
+
     def wci(self):  # Willard-Chandler Interface
         self.wci_bounds = np.where(self.wci_bounds.astype(bool), self.wci_bounds, self.bounds)
         self.num_grid = (np.array(list(map(lambda _: _[1]-_[0], self.wci_bounds))) / self.interval).astype(int)
@@ -115,6 +120,12 @@ class Interface(Result):
         min_dists = list(map(self.dist_to_interface, origins))
         self.dist_results.extend(min_dists)
 
+    def wci_zpmf(self):
+        self.wci()
+        origins = self.atoms_find(self.pmf_atoms)
+        min_dists = list(map(self.z_to_interface, origins))
+        self.dist_results.extend(min_dists)
+
     # This does not calculate PMF directly, but logs the COLVAR(dist to interface) instead.
     # The PMF shall be calculated with WHAM, as the is a series of biased trajectories.
     def save_wci_pmf(self):
@@ -139,6 +150,12 @@ class Interface(Result):
 
     def wci_pmf_worker(self):
         self.analysis_template(inner_compute_func=self.wci_pmf,
+                               inner_save_func=self.void_func,
+                               outer_compute_func=self.void_func,
+                               outer_save_func=self.save_wci_pmf)
+
+    def wci_zpmf_worker(self):
+        self.analysis_template(inner_compute_func=self.wci_zpmf,
                                inner_save_func=self.void_func,
                                outer_compute_func=self.void_func,
                                outer_save_func=self.save_wci_pmf)
