@@ -3,6 +3,7 @@
 import os
 
 import numpy as np
+from itertools import accumulate as acc
 
 from rmdtoolkit.basic.result import Result
 
@@ -10,25 +11,14 @@ from rmdtoolkit.basic.result import Result
 class ProtonHop(Result):
     def __init__(self):
         super().__init__()
-        self.delta_t = 1
-        self.h_list = list()
-        self.t_list = list()
-        self.pivot_list = list()
+        self.h_lists = list()
+        self.pivot_lists = list()  # Also good for multiple CECs
+        self.time_list = list()
 
     def read_input(self):
         super().read_input()
-        with open(self.input_path, 'r') as input_file:
-            for line in input_file:
-                line = line.split()
-                if len(line) > 0:
-                    try:
-                        if line[0] == 'DELTA_T':  # unit of this is 'frame' (each frame occupy 1 timestep in LAMMPS)
-                            self.delta_t = int(line[1])
-                    except IndexError:
-                        raise Exception('No value found after tag \'{}\' in input file.'.format(line[0]))
 
     def calculate_forward_hop(self):
-        os.chdir(self.work_dir)
         last_frame = 0
         self.find_file(trj_flag=False)
         self.open_file(trj_flag=False)
@@ -42,28 +32,37 @@ class ProtonHop(Result):
                 continue
             last_frame = self.evb_time
 
-            self.pivot_list.append(np.array(self.evb_info['ReactionCenters'])[:, 1])
+            self.pivot_lists.append(np.array(self.evb_info['ReactionCenters'])[:, 1])
+            self.time_list.append(self.evb_time)
         self.close_file(trj_flag=False)
+        self.pivot_lists = np.array(self.pivot_lists).T
 
-        # donor_ids = [0] * len(pivot_ids_list[0])
-        # for i, pivot_ids in enumerate(pivot_ids_list):
-        #     for j, pivot_id in enumerate(pivot_ids):
-        #         if i == 0:
-        #             hs = np.zeros(len(pivot_ids_list[0]))
-        #         elif i == 1:
-        #             hs[j] += 1
-        #             donor_ids[j] = pivot_ids_list[i-1][j]
-        #         elif pivot_id != pivot_ids_list[i-1][j]:
-        #             hs[j] += 1
-        #             if pivot_id == donor_ids[j]:
-        #                 hs[j] -= 2
-        #             donor_ids[j] = pivot_ids_list[i-1][j]
-        #         else:
-        #             donor_ids[j] = pivot_ids_list[i-1][j]
-        #     self.h_list.append(list(hs))  # It is a must to do a conversion. Shallow copy thingy.
+        # I really hate this chunk of for-loop and if/elif/else, but for the sake of readability I'll keep it this way.
+        rattle_trigger = False
+        for pivot_list in self.pivot_lists:
+            h_list = list()
+            for i, pivot_id in enumerate(pivot_list):
+                if i == 0:
+                    delta_h = 0
+                elif not pivot_id - pivot_list[i-1]:
+                    delta_h = 0
+                elif pivot_id - pivot_list[i-2]:
+                    delta_h = 1
+                    rattle_trigger = False
+                elif rattle_trigger:
+                    delta_h = 1
+                    rattle_trigger = False
+                else:
+                    delta_h = -1
+                    rattle_trigger = True
+                h_list.append(delta_h)
+            h_list = list(acc(h_list))
+            self.h_lists.append(h_list)
 
     def save_forward_hop_result(self):
-        with open('%s%s.hop' % (self.save_dir, self.save_tag), 'w') as save_file:
-            for i, (t, hs) in enumerate(zip(self.t_list, self.h_list)):
-                save_file.write('{t} {hs} {pivots}\n'.format(t=t, hs=' '.join(list(map(str, hs))),
-                                                             pivots=' '.join(list(map(str, self.pivot_list[i])))))
+        self.time_list = np.array(self.time_list).astype(str)
+        self.h_lists = np.array(self.h_lists).astype(str)
+        result_arr = np.vstack((self.time_list, self.h_lists)).T
+        with open('{}{}.hop'.format(self.save_dir, self.save_tag), 'w') as save_file:
+            for result_line in result_arr:
+                save_file.write(' '.join(result_line) + '\n')
