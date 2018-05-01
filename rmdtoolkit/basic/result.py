@@ -16,14 +16,14 @@ from rmdtoolkit.basic.tool import string_is_true
 # I am turning it off here.
 pd.options.mode.chained_assignment = None  # default='warn'
 
-CM = ConfigManager()
-SAVE_DIR = CM.get('basics', 'result_save_dir')
-
 
 class Result(object):
     def __init__(self):
         super().__init__()
-        self.module_handle = 'RMDTK'
+
+        self.trj_flag = True
+        self.evb_flag = False
+        self.input_flag = True
 
         self._sys_name = str()
         self.trj_basename = str()
@@ -33,7 +33,6 @@ class Result(object):
         self.input_path = str()
         self.work_dir = str()
 
-        self.evb_required = False
         self.tell_process_freq = 20
         self.stop_frame = float('inf')
         self.is_first_frame = True
@@ -54,7 +53,6 @@ class Result(object):
                         'x': float, 'y': float, 'z': float,
                         'vx': float, 'vy': float, 'vz': float,
                         'q': float}
-
         self.bounds = np.zeros((3, 2))
         self.box_len = np.zeros(3)
         self.system_volume = float()
@@ -85,7 +83,7 @@ class Result(object):
         self.com_range = list()
 
         self.save_tag = 'default'
-        self.save_dir = SAVE_DIR
+        self.save_dir = './'
 
         self.db = MyDB()
 
@@ -110,6 +108,8 @@ class Result(object):
         self.evb_basename = self._sys_name
 
     def read_input(self):
+        if not self.input_flag:
+            return 0
         if not self.input_path:
             raise Exception('[ERROR] Input file not assigned!')
         with open(self.input_path, 'r') as input_file:
@@ -118,7 +118,7 @@ class Result(object):
                 if len(line) > 0:
                     try:
                         if line[0] == 'RMD':
-                            self.evb_required = True if string_is_true(line[1]) else False
+                            self.evb_flag = True if string_is_true(line[1]) else False
                         elif line[0] == 'COMRANGE':
                             self.com_range_list = [int(_) for _ in line[1:]]
                         elif line[0] == 'SAVETAG':
@@ -174,55 +174,68 @@ class Result(object):
                     except IndexError:
                         raise Exception('No value found after tag \'{}\' in input file.'.format(line[0]))
 
-    def find_file(self, evb_flag=True, trj_flag=True):
-        if trj_flag:
+    def find_file(self):
+        if self.trj_flag:
             self.trj_path = '{}{}.{}'.format(self.work_dir, self.trj_basename, self.trj_extname)
             if not os.path.isfile(self.trj_path):
                 raise Exception('File {} does not exist!'.format(self.trj_path))
-        if evb_flag:
+        if self.evb_flag:
             self.evb_path = '{}{}.{}'.format(self.work_dir, self.evb_basename, self.evb_extname)
             if not os.path.isfile(self.evb_path):
                 raise Exception('File {} does not exist!'.format(self.evb_path))
 
-    def open_file(self, evb_flag=True, trj_flag=True):
-        if trj_flag:
+    def open_file(self):
+        if self.trj_flag:
             self.trj_file = open(self.trj_path, 'r')
-        if evb_flag:
+        if self.evb_flag:
             self.evb_file = open(self.evb_path, 'r')
 
-    def close_file(self, evb_flag=True, trj_flag=True):
-        if trj_flag:
+    def close_file(self):
+        if self.trj_flag:
             self.trj_file.close()
-        if evb_flag:
+        if self.evb_flag:
             self.evb_file.close()
 
     def checked_read(self, parse=True):
-        self.trj_read_frame()
-        if not self.is_first_frame and len(self.trj_info) != self.system_size:
-            return -1
-        if self.trj_time == 'EOF':
-            print('EOF')
-            return -1
-        if self.frame_tot > self.stop_frame:
-            return -1
-        elif self.trj_time < self.last_frame:
-            return 1
-        if self.evb_required:
-            self.evb_match_trj()
+        if not any((self.evb_flag, self.trj_flag)):
+            raise Exception('At least one of evb_flag or trj_flag should be set to True.')
+        if self.trj_flag:
+            self.trj_read_frame()
+            if not self.is_first_frame and len(self.trj_info) != self.system_size:
+                return -1
+            if self.trj_time == 'EOF':
+                print('EOF')
+                return -1
+            if self.frame_tot > self.stop_frame:
+                return -1
+            elif self.trj_time < self.last_frame:
+                return 1
+            if self.evb_flag:
+                self.evb_match_trj()
+                if not self.evb_info:
+                    return -1
+            self.last_frame = self.trj_time
+            if self.is_first_frame:
+                self.is_first_frame = False
+                self.system_size = len(self.trj_info)
+            if parse:
+                self.parse_trj_info()
+            self.frame_tot += 1
+            return 0
+        else:
+            self.evb_read_frame()
+            if self.frame_tot > self.stop_frame:
+                return -1
+            elif self.evb_time < self.last_frame:
+                return 1
             if not self.evb_info:
                 return -1
-        self.last_frame = self.trj_time
-        if self.is_first_frame:
-            self.is_first_frame = False
-            self.system_size = len(self.trj_info)
-        if parse:
-            self.parse_trj_info()
-        self.frame_tot += 1
-        return 0
+            self.frame_tot += 1
+            return 0
 
     def tell_process(self):
         if self.frame_tot % self.tell_process_freq == 0:
-            print('[{}] {} READING FRAME {}'.format(self.module_handle, self.save_tag, self.trj_time))
+            print('[{}] {} READING FRAME {}'.format(self.__class__.__name__, self.save_tag, self.trj_time))
 
     def void_func(self):
         pass
@@ -244,6 +257,7 @@ class Result(object):
             inner_save_func()
         outer_compute_func()
         outer_save_func()
+        self.close_file()
 
     # =================================================================================================================
     # || InfoGet Methods ||

@@ -18,25 +18,21 @@ class ProtonHop(Result):
     def read_input(self):
         super().read_input()
 
+    def forward_hop_worker(self):
+        self.trj_flag = False
+        self.evb_flag = True
+        self.input_flag = False
+        self.analysis_template(inner_compute_func=self.log_forward_hop_info,
+                               inner_save_func=self.void_func,
+                               outer_compute_func=self.calculate_forward_hop,
+                               outer_save_func=self.save_forward_hop_result)
+
+    def log_forward_hop_info(self):
+        self.pivot_lists.append(np.array(self.evb_info['ReactionCenters'])[:, 1])
+        self.time_list.append(self.evb_time)
+
     def calculate_forward_hop(self):
-        last_frame = 0
-        self.find_file(trj_flag=False)
-        self.open_file(trj_flag=False)
-        while True:
-            self.evb_read_frame()
-            if not self.evb_info:
-                break
-            if self.evb_time == 'EOF':
-                break
-            if self.evb_time < last_frame:
-                continue
-            last_frame = self.evb_time
-
-            self.pivot_lists.append(np.array(self.evb_info['ReactionCenters'])[:, 1])
-            self.time_list.append(self.evb_time)
-        self.close_file(trj_flag=False)
         self.pivot_lists = np.array(self.pivot_lists).T
-
         # I really hate this chunk of for-loop and if/elif/else, but for the sake of readability I'll keep it this way.
         rattle_trigger = False
         for pivot_list in self.pivot_lists:
