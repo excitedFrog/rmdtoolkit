@@ -17,6 +17,7 @@ class Interface(Result):
 
         self.wci_bounds = np.zeros((3, 2))
         self.num_grid = None
+        self.mesh_grid = np.array([])
         self.bandwidth = 2.4
         self.den_values = None
         self.xyz = {'x': 0, 'y': 1, 'z': 2}
@@ -30,6 +31,9 @@ class Interface(Result):
         self.den_atoms = list()  # Density of which is used to determine the interface
         self.pmf_atoms = list()  # PMF atom
         self.dist_results = list()
+
+        #Temp
+        self.zcec = float()
 
     @property
     def mode(self):
@@ -77,6 +81,15 @@ class Interface(Result):
         energy = np.sum(tdiff * tdiff, axis=1) / 2.
         return np.sum(np.exp(-energy)) / (2 * np.pi * self.bandwidth**2)
 
+    def gaussian_kde_new(self):  # Not in use, since somehow this fully vectorized method is slower than map. Funny.
+        diffs = np.abs(self.den_values[None, ...] - self.mesh_grid[:, None, :])
+        pdiffs = self.box_len - diffs
+        masks = diffs < self.box_len / 2
+        diffs = np.where(masks, diffs, pdiffs)
+        tdiffs = np.dot(diffs, 1 / self.bandwidth)
+        energies = np.sum(tdiffs * tdiffs, axis=2) / 2.
+        return np.sum(np.exp(-energies), axis=1) / (2 * np.pi * self.bandwidth**2)
+
     def dist_to_interface(self, origin):
         diff = np.abs(self.interface - origin)
         pdiff = self.box_len - diff
@@ -90,17 +103,18 @@ class Interface(Result):
             origin[2] - self.interface[np.argmin(np.linalg.norm(self.interface[:, 0:2] - origin[0:2], axis=1)), 2])
 
     def wci(self):  # Willard-Chandler Interface
-        self.wci_bounds = np.where(self.wci_bounds.astype(bool), self.wci_bounds, self.bounds)
-        self.num_grid = (np.array(list(map(lambda _: _[1]-_[0], self.wci_bounds))) / self.interval).astype(int)
-        x, y, z = np.mgrid[self.wci_bounds[0][0]:self.wci_bounds[0][1]:self.num_grid[0]*1j,
-                           self.wci_bounds[1][0]:self.wci_bounds[1][1]:self.num_grid[1]*1j,
-                           self.wci_bounds[2][0]:self.wci_bounds[2][1]:self.num_grid[2]*1j]
-        mesh_grid = np.vstack([x.ravel(), y.ravel(), z.ravel()]).T
+        if not self.mesh_grid.any():
+            self.wci_bounds = np.where(self.wci_bounds.astype(bool), self.wci_bounds, self.bounds)
+            self.num_grid = (np.array(list(map(lambda _: _[1]-_[0], self.wci_bounds))) / self.interval).astype(int)
+            x, y, z = np.mgrid[self.wci_bounds[0][0]:self.wci_bounds[0][1]:self.num_grid[0]*1j,
+                               self.wci_bounds[1][0]:self.wci_bounds[1][1]:self.num_grid[1]*1j,
+                               self.wci_bounds[2][0]:self.wci_bounds[2][1]:self.num_grid[2]*1j]
+            self.mesh_grid = np.vstack([x.ravel(), y.ravel(), z.ravel()]).T
 
         self.den_values = self.atoms_find(self.den_atoms)
-        density_grid = np.abs(np.array(list(map(self.gaussian_kde, mesh_grid))) - self.d_interface)\
+        density_grid = np.abs(np.array(list(map(self.gaussian_kde, self.mesh_grid))) - self.d_interface)\
             .reshape(self.num_grid)
-        mesh_grid = mesh_grid.reshape(np.append(self.num_grid, 3))
+        mesh_grid = self.mesh_grid.reshape(np.append(self.num_grid, 3))
 
         if self.mode == 'fast':
             self.interface = mesh_grid[np.where(density_grid < 0.002)].T
@@ -109,7 +123,7 @@ class Interface(Result):
             xs, ys = np.mgrid[0:self.num_grid[0], 0:self.num_grid[1]]
             self.interface = mesh_grid[xs, ys, index].reshape((self.num_grid[0]*self.num_grid[1], 3))
 
-    def save_wci(self):  # TODO
+    def save_wci(self):
         with open('{}{}.wci'.format(self.save_dir, self.save_tag), 'a') as save_file:
                 save_file.write('# WCI at {}\n'.format(self.trj_time))
                 np.savetxt(save_file, self.interface, fmt='%.4f')
@@ -117,24 +131,23 @@ class Interface(Result):
     def wci_pmf(self):
         self.wci()
         origins = self.atoms_find(self.pmf_atoms)
-        min_dists = list(map(self.dist_to_interface, origins))
-        self.dist_results.extend(min_dists)
+        self.dist_results = list(map(self.dist_to_interface, origins))
+        # Temp
+        self.zcec = self.find_cec()[0][2]
 
     def wci_zpmf(self):
         self.wci()
         origins = self.atoms_find(self.pmf_atoms)
-        min_dists = list(map(self.z_to_interface, origins))
-        self.dist_results.extend(min_dists)
+        self.dist_results = list(map(self.z_to_interface, origins))
+        # Temp
+        self.zcec = self.find_cec()[0][2]
 
     # This does not calculate PMF directly, but logs the COLVAR(dist to interface) instead.
-    # The PMF shall be calculated with WHAM, as the is a series of biased trajectories.
+    # The PMF shall be calculated with WHAM, as there is a series of biased trajectories.
     def save_wci_pmf(self):
-        len_result = len(self.dist_results)
         with open('{}{}.wci-pmf'.format(self.save_dir, self.save_tag), 'a') as save_file:
-            arr = np.concatenate((np.arange(len_result).reshape(len_result, 1),
-                                  np.array(self.dist_results).reshape(len_result, 1)),
-                                 axis=1)
-            np.savetxt(save_file, arr, fmt='%.4f')
+            for dist in self.dist_results:
+                save_file.write('1.000 {} {}\n'.format(dist, self.zcec))
 
     def wci_worker(self):
         self.analysis_template(inner_compute_func=self.wci,
@@ -150,15 +163,15 @@ class Interface(Result):
 
     def wci_pmf_worker(self):
         self.analysis_template(inner_compute_func=self.wci_pmf,
-                               inner_save_func=self.void_func,
+                               inner_save_func=self.save_wci_pmf,
                                outer_compute_func=self.void_func,
-                               outer_save_func=self.save_wci_pmf)
+                               outer_save_func=self.void_func)
 
     def wci_zpmf_worker(self):
         self.analysis_template(inner_compute_func=self.wci_zpmf,
-                               inner_save_func=self.void_func,
+                               inner_save_func=self.save_wci_pmf,
                                outer_compute_func=self.void_func,
-                               outer_save_func=self.save_wci_pmf)
+                               outer_save_func=self.void_func)
 
     def plot(self):
         print(self.frame_tot)

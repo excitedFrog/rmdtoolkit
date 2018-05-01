@@ -181,7 +181,7 @@ class Result(object):
                 raise Exception('File {} does not exist!'.format(self.trj_path))
         if evb_flag:
             self.evb_path = '{}{}.{}'.format(self.work_dir, self.evb_basename, self.evb_extname)
-            if not os.path.isfile(self.trj_path):
+            if not os.path.isfile(self.evb_path):
                 raise Exception('File {} does not exist!'.format(self.evb_path))
 
     def open_file(self, evb_flag=True, trj_flag=True):
