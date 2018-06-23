@@ -1,9 +1,8 @@
 # Python 3.6.1
 
+import numpy as np
 import matplotlib
 matplotlib.use('Agg')
-
-import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
@@ -13,7 +12,6 @@ from rmdtoolkit.basic.result import Result
 class Interface(Result):
     def __init__(self):
         super().__init__()
-        self.module_handle = 'INTERFACE'
 
         self.wci_bounds = np.zeros((3, 2))
         self.num_grid = None
@@ -69,6 +67,8 @@ class Interface(Result):
                             self.den_atoms.append(line[1:])
                         elif line[0] == 'PMF_ATOM':
                             self.pmf_atoms.append(line[1:])
+                        elif line[0] == 'BW':
+                            self.bandwidth = float(line[1])
                     except IndexError:
                         raise Exception('No value found after tag \'{}\' in input file.'.format(line[0]))
 
@@ -79,7 +79,8 @@ class Interface(Result):
         diff = np.where(mask, diff, pdiff)  # mask'em
         tdiff = np.dot(diff, 1 / self.bandwidth)
         energy = np.sum(tdiff * tdiff, axis=1) / 2.
-        return np.sum(np.exp(-energy)) / (2 * np.pi * self.bandwidth**2)
+        # return np.sum(np.exp(-energy)) / (2 * np.pi * self.bandwidth**2)
+        return np.sum(np.exp(-energy))  # another way
 
     def gaussian_kde_new(self):  # Not in use, since somehow this fully vectorized method is slower than map. Funny.
         diffs = np.abs(self.den_values[None, ...] - self.mesh_grid[:, None, :])
@@ -133,14 +134,14 @@ class Interface(Result):
         origins = self.atoms_find(self.pmf_atoms)
         self.dist_results = list(map(self.dist_to_interface, origins))
         # Temp
-        self.zcec = self.find_cec()[0][2]
+        self.zcec = self.find_cec()[0][2] - self.find_com()[2]
 
     def wci_zpmf(self):
         self.wci()
         origins = self.atoms_find(self.pmf_atoms)
         self.dist_results = list(map(self.z_to_interface, origins))
         # Temp
-        self.zcec = self.find_cec()[0][2]
+        self.zcec = self.find_cec()[0][2] - self.find_com()[2]
 
     # This does not calculate PMF directly, but logs the COLVAR(dist to interface) instead.
     # The PMF shall be calculated with WHAM, as there is a series of biased trajectories.

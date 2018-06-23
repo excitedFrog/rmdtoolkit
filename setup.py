@@ -26,7 +26,7 @@ setup(name='rmdtoolkit',
                    'Programming Language :: Python :: 3'],
       keywords='chemistry, molecular_dynamics',
       packages=find_packages(),
-      install_requires=['numpy', 'scipy', 'mendeleev', 'pandas', 'twilio'],  # TODO:Take care of this.
+      install_requires=['numpy', 'scipy', 'mendeleev', 'pandas', 'twilio', 'matplotlib'],  # TODO:Take care of this.
       extras_require={  # Optional
           'dev': ['check-manifest'],
           'test': ['coverage'],

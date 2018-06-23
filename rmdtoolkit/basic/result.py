@@ -8,7 +8,6 @@ from io import StringIO
 
 from collections import OrderedDict
 
-from rmdtoolkit.config.config_manager import ConfigManager
 from rmdtoolkit.database.my_database import MyDB
 from rmdtoolkit.basic.tool import string_is_true
 
@@ -127,7 +126,7 @@ class Result(object):
                             self.save_dir = line[1]
                         elif line[0] == 'TPFREQ':
                             self.tell_process_freq = int(line[1]) if int(line[1]) > 0 else 20
-                        elif line[0] == 'STOP_FRAME':  # stop frame (unit is frame)
+                        elif line[0] == 'STOP_FRAME':  # stop frame (unit is frame, not simulation time)
                             self.stop_frame = int(line[1])
 
                         elif line[0] == 'SYS_NAME':
@@ -235,7 +234,7 @@ class Result(object):
 
     def tell_process(self):
         if self.frame_tot % self.tell_process_freq == 0:
-            print('[{}] {} READING FRAME {}'.format(self.__class__.__name__, self.save_tag, self.trj_time))
+            print('[{}] {} READING FRAME {}'.format(self.__class__.__name__, self.save_tag, self.frame_tot))
 
     def void_func(self):
         pass
@@ -428,8 +427,11 @@ class Result(object):
     # =================================================================================================================
     # ||AtomFind Methods||
     # =================================================================================================================
-    def atoms_find(self, target_atoms, df=False):  # Target atoms is a list of list.
+    def atoms_find(self, target_atoms=None, df=False):  # Target atoms is a list of list.
         temp = list()
+        if not target_atoms:
+            target_atoms = self.target_atoms
+
         for target_atom in target_atoms:
             temp.append(self.atom_find(target_atom, df=df))
         if df:
