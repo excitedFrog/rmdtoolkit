@@ -1,14 +1,16 @@
 # Python 3.6.1
 
+import os
 import warnings
 import configparser
-from os import path
 
-here = path.abspath(path.dirname(__file__))
+THIS_DIR = os.path.dirname(__file__)
 
 
 class ConfigManager(object):
-    def __init__(self):
+    def __init__(self, config_path=None):
+        if config_path:
+            self.set_config_path(config_path)
         self.config_path = self.get_config_path()
         self.cp = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
         self.cp.read(self.config_path)
@@ -18,19 +20,17 @@ class ConfigManager(object):
         if info:
             return info
         else:
-            raise Exception('[CONFIG ERROR] <{}> in section <{}> is not set!'.format(option, section))
+            raise ValueError('[CONFIG ERROR] <{}> in section <{}> is not set!'.format(option, section))
 
     def set(self, section, option, value):
         if not self.cp.has_section(section):
-            warnings.warn('[CONFIG WARNING] section <{}> does not exist. Make sure there is not a typo.'
-                          .format(section))
+            warnings.warn('[CONFIG WARNING] section <{}> does not exist.'.format(section))
             self.cp.add_section(section)
         if not self.cp.has_option(section, option):
-            warnings.warn('[CONFIG WARNING] section <{}> does not have option <{}>. Make sure there is not a typo.'
-                          .format(section, option))
+            warnings.warn('[CONFIG WARNING] section <{}> does not have option <{}>.'.format(section, option))
         self.cp.set(section, option, value)
         self.cp.write(open(self.config_path, 'w'))
-        print('[CONFIG] option <{}> in section <{}> has been set as \'{}\''.format(option, section, value))
+        print('[CONFIG] option <{}> in section <{}> has been set as \'{}\''.format(option, section, value), )
 
     def get_list(self, section, option):
         return self.cp.get(section, option).split()
@@ -44,12 +44,12 @@ class ConfigManager(object):
         print('\n'.join([' = '.join(_) for _ in info]))
 
     @staticmethod
-    def set_config_path(string):
-        with open(path.join(here, 'config_path'), 'w', encoding='utf-8') as config_path_file:
-            config_path_file.write(string)
+    def set_config_path(path):
+        with open(os.path.join(THIS_DIR, 'ConfigPath.config'), 'w', encoding='utf-8') as config_path_file:
+            config_path_file.write(path)
 
     @staticmethod
     def get_config_path():
-        with open(path.join(here, 'config_path'), 'r', encoding='utf-8') as config_path_file:
-            config_path = config_path_file.readline().strip('\n')
+        with open(os.path.join(THIS_DIR, 'ConfigPath.config'), 'r', encoding='utf-8') as config_path_file:
+            config_path = config_path_file.read()
         return config_path

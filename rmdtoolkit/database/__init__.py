@@ -1,1 +1,1 @@
-# Python 3.6.1
+from .my_database import *

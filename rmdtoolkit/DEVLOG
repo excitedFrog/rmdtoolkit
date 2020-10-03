@@ -1,0 +1,28 @@
+10/25/2018
+Start of this dev log.
+Finished:
+    ./parser/base.py
+    ./parser/evb_parser.py
+    ./parser/lammps_parser.py
+    ./parser/xyz_parser.py
+    ./analysis/base.py
+Unfinished:
+    ./parser/pdb_parser.py
+    ./analysis/density.py
+
+11/06/2018
+Finished:
+    ./analysis/density.py
+Unfinished:
+    ./parser/pdb_parser.py
+Planned:
+    Module for LAMMPS input file (.data) and RMD input file (.top) generation.
+    Module for SLURM job submitting and monitoring (Daemon).
+
+11/07/2018
+Finished:
+    ./parser/pdb_parser.py
+
+11/19/2018
+Finished:
+    ./analysis/rdf.py

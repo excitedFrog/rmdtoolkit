@@ -1,0 +1,24 @@
+{
+  "time": 0,
+  "complex_count": 0,
+  "rc_location": [],
+  "energy_summary": {
+    "ene_environment": {
+      "total": 0.0,
+      "vdw": 0.0,
+      "coul": 0.0,
+      "bond": 0.0,
+      "angle": 0.0,
+      "dihedral": 0.0,
+      "improper": 0.0,
+      "kspace": 0.0
+    },
+    "ene_complex": [],
+    "ene_inter_cplx": 0.0,
+    "ene_total": 0.0
+  },
+  "complex": [],
+  "extra":{
+
+  }
+}
